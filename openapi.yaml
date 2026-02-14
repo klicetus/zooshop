@@ -1,40 +1,45 @@
 openapi: 3.0.0
 info:
-  title: Зоомагазин API
-  version: 1.0.0
-  description: API для интернет-магазина зоотоваров с самовывозом и доставкой
+  title: Зоомагазин API — Корма и товары для домашних животных
+  version: 1.1.0
+  description: |
+    REST API для онлайн-магазина зоотоваров с поддержкой доставки и самовывоза.
+    
+   
+    
   contact:
-    email: support@zooshop.ru
     name: Поддержка зоомагазина
+    email: support@zooshop.ru
     url: https://zooshop.ru/support
+  license:
+    name: Proprietary
+    url: https://zooshop.ru/license
+
 servers:
   - url: https://api.zooshop.ru/v1
     description: Production сервер
   - url: https://staging-api.zooshop.ru/v1
-    description: Staging сервер
+    description: Staging / Тестирование
 
 tags:
   - name: auth
     description: Аутентификация и регистрация
   - name: users
-    description: Управление пользователями
+    description: Профиль пользователя
   - name: products
     description: Каталог товаров
   - name: cart
-    description: Корзина покупателя
+    description: Корзина
   - name: orders
-    description: Оформление и управление заказами
+    description: Заказы
   - name: admin
     description: Административные функции
 
 paths:
-  ########################
-  # Пользователь / Аутентификация
-  ########################
   /auth/register:
     post:
       tags: [auth]
-      summary: Регистрация нового пользователя
+      summary: Регистрация пользователя
       operationId: registerUser
       requestBody:
         required: true
@@ -44,22 +49,20 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
         '201':
-          description: Пользователь успешно зарегистрирован
+          description: Пользователь создан
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
-          description: Некорректные данные запроса
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email уже зарегистрирован
 
   /auth/login:
     post:
       tags: [auth]
-      summary: Вход в систему
+      summary: Вход пользователя
       operationId: loginUser
       requestBody:
         required: true
@@ -69,137 +72,102 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Успешная аутентификация
+          description: Успешный вход
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '401':
-          description: Неверный email или пароль
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /auth/admin/login:
-    post:
-      tags: [auth, admin]
-      summary: Вход в админ-панель
-      operationId: loginAdmin
-      description: Доступ только для пользователей с ролью admin
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Успешный вход в админку
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '403':
-          description: Недостаточно прав
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          description: Неверные учетные данные
 
   /users/me:
     get:
       tags: [users]
-      summary: Информация о текущем пользователе
+      summary: Получить данные текущего пользователя
       operationId: getCurrentUser
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       responses:
         '200':
-          description: Данные пользователя
+          description: Данные профиля
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
-  ########################
-  # Товары и каталог
-  ########################
   /products:
     get:
       tags: [products]
-      summary: Каталог товаров
+      summary: Список товаров с фильтрами и пагинацией
       operationId: getProducts
       parameters:
         - name: search
           in: query
-          required: false
-          schema: { type: string, example: "Royal Canin" }
+          schema: { type: string }
           description: Поиск по названию, бренду, описанию
-
         - name: categories
           in: query
-          required: false
-          description: Фильтр по категориям (можно несколько через запятую)
           schema:
             type: array
             items:
               type: string
-              enum: [food, toys, accessories, care, supplements, grooming]
-            example: ["food", "care"]
-          style: form
-          explode: false   # ?categories=food,care
-
-        - name: animalTypes
-          in: query
-          required: false
-          description: Фильтр по видам животных (можно несколько)
-          schema:
-            type: array
-            items:
-              type: string
-              enum: [dog, cat, bird, fish, small_pet, reptile]
-            example: ["cat", "dog"]
+              enum: [food, toys, accessories, care, supplements, grooming, litter]
           style: form
           explode: false
-
+          description: Множественный выбор категорий (?categories=food,care)
+        - name: animalTypes
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [dog, cat, bird, fish, small_pet, reptile, other]
+          style: form
+          explode: false
+          description: Множественный выбор видов животных
         - name: weights
           in: query
-          required: false
-          description: Фильтр по фасовке/весу в кг (можно указать несколько значений или диапазон)
           schema:
-            oneOf:
-              - type: array
-                items:
-                  type: number
-                  format: double
-                  example: 1.5
-                example: [1.5, 4.0, 10.0]     # точные значения
-              - type: object
-                properties:
-                  min:
-                    type: number
-                    example: 2.0
-                  max:
-                    type: number
-                    example: 12.0
-          style: deepObject
-          explode: true
-       
+            type: array
+            items: { type: number, format: double }
+          style: form
+          explode: false
+          description: Точные значения фасовки в кг (?weights=1.5,4,10)
+        - name: weightMin
+          in: query
+          schema: { type: number, format: double }
+          description: Минимальный вес фасовки
+        - name: weightMax
+          in: query
+          schema: { type: number, format: double }
+          description: Максимальный вес фасовки
+        - name: minPrice
+          in: query
+          schema: { type: number, format: double }
+        - name: maxPrice
+          in: query
+          schema: { type: number, format: double }
+        - name: inStock
+          in: query
+          schema: { type: boolean, default: true }
+          description: Только товары в наличии
         - name: sort
           in: query
-          required: false
-          schema: { type: string, enum: [price_asc, price_desc, name_asc, name_desc], example: "price_asc" }
+          schema:
+            type: string
+            enum: [price_asc, price_desc, name_asc, name_desc, popularity_desc, novelty_desc]
+          
         - name: page
           in: query
-          required: false
           schema: { type: integer, minimum: 1, default: 1 }
         - name: limit
           in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 100, default: 24 }
       responses:
         '200':
-          description: Список товаров
+          description: Страница товаров
           content:
             application/json:
               schema:
@@ -214,27 +182,24 @@ paths:
         - name: productId
           in: path
           required: true
-          schema: { type: integer, example: 56789 }
-          description: ID товара
+          schema: { type: integer }
       responses:
         '200':
-          description: Информация о товаре и наличие в магазинах
+          description: Карточка товара
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductDetails'
         '404':
-          description: Товар не найден
+          $ref: '#/components/responses/NotFound'
 
-  ########################
-  # Корзина
-  ########################
   /cart:
     get:
       tags: [cart]
       summary: Получить корзину
       operationId: getCart
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Содержимое корзины
@@ -248,7 +213,8 @@ paths:
       tags: [cart]
       summary: Добавить товар в корзину
       operationId: addToCart
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -258,17 +224,16 @@ paths:
       responses:
         '201':
           description: Товар добавлен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CartItem'
+        '409':
+          description: Недостаточно товара на складе
 
   /cart/items/{productId}:
     patch:
       tags: [cart]
-      summary: Изменить количество товара
+      summary: Изменить количество
       operationId: updateCartItemQuantity
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
         - name: productId
           in: path
@@ -282,23 +247,19 @@ paths:
               type: object
               required: [quantity]
               properties:
-                quantity:
-                  type: integer
-                  minimum: 1
-                  maximum: 99
-                  example: 3
+                quantity: { type: integer, minimum: 1 }
       responses:
         '200':
-          description: Количество обновлено
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CartItem'
+          description: Обновлено
+        '409':
+          description: Недостаточно на складе
+
     delete:
       tags: [cart]
-      summary: Удалить товар из корзины
+      summary: Удалить позицию
       operationId: removeFromCart
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
         - name: productId
           in: path
@@ -306,17 +267,19 @@ paths:
           schema: { type: integer }
       responses:
         '204':
-          description: Товар удален из корзины
+          description: Удалено
 
-  ########################
-  # Заказы
-  ########################
   /orders:
     post:
       tags: [orders]
-      summary: Оформить заказ
+      summary: Создать заказ
+      description: |
+        Создаёт заказ → резервирует товары (уменьшает stock).
+        Если недостаточно остатка хотя бы по одному товару → откат, 409.
+        После успеха корзина очищается.
       operationId: createOrder
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -325,29 +288,32 @@ paths:
               $ref: '#/components/schemas/CreateOrderRequest'
       responses:
         '201':
-          description: Заказ создан
+          description: Заказ создан, товары зарезервированы
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '409':
+          description: Недостаточно товара на складе
+        '400':
+          description: Некорректные данные заказа
 
     get:
       tags: [orders]
       summary: Список заказов пользователя
       operationId: getUserOrders
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
         - name: page
           in: query
-          required: false
           schema: { type: integer, default: 1 }
         - name: limit
           in: query
-          required: false
           schema: { type: integer, default: 10 }
       responses:
         '200':
-          description: Список заказов
+          description: Страница заказов
           content:
             application/json:
               schema:
@@ -356,30 +322,31 @@ paths:
   /orders/{orderId}:
     get:
       tags: [orders]
-      summary: Статус и детали заказа
+      summary: Детали заказа
       operationId: getOrderById
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
         - name: orderId
           in: path
           required: true
-          schema: { type: string, example: "ORD-20250210-123456" }
+          schema: { type: string }
       responses:
         '200':
-          description: Информация о заказе
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
+          description: Детали заказа
         '404':
-          description: Заказ не найден
+          $ref: '#/components/responses/NotFound'
 
   /orders/{orderId}/cancel:
     post:
       tags: [orders]
       summary: Отменить заказ
+      description: |
+        Отменяет заказ → освобождает остатки (увеличивает stock).
+        Доступно только для статусов: new, processing.
       operationId: cancelOrder
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
         - name: orderId
           in: path
@@ -391,145 +358,24 @@ paths:
             schema:
               type: object
               properties:
-                reason:
-                  type: string
-                  example: "Передумал"
+                reason: { type: string }
       responses:
         '200':
-          description: Заказ отменен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
+          description: Заказ отменён, остатки освобождены
         '400':
-          description: Заказ нельзя отменить
-
-  ########################
-  # Администратор
-  ########################
-  /admin/products:
-    post:
-      tags: [admin]
-      summary: Создать товар
-      operationId: createProduct
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProductCreateRequest'
-      responses:
-        '201':
-          description: Товар создан
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-
-  /admin/products/{productId}:
-    put:
-      tags: [admin]
-      summary: Обновить товар
-      operationId: updateProduct
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: productId
-          in: path
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProductUpdateRequest'
-      responses:
-        '200':
-          description: Товар обновлен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-    delete:
-      tags: [admin]
-      summary: Удалить товар
-      operationId: deleteProduct
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: productId
-          in: path
-          required: true
-          schema: { type: integer }
-      responses:
-        '204':
-          description: Товар удален
-
-  /admin/orders:
-    get:
-      tags: [admin]
-      summary: Получить все заказы с фильтрацией
-      operationId: getAdminOrders
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: startDate
-          in: query
-          required: false
-          schema: { type: string, format: date, example: "2026-02-01" }
-        - name: endDate
-          in: query
-          required: false
-          schema: { type: string, format: date, example: "2026-02-12" }
-        - name: customerId
-          in: query
-          required: false
-          schema: { type: integer }
-        - name: status
-          in: query
-          required: false
-          schema: 
-            type: string
-            enum: [new, processing, ready, completed, cancelled]
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, default: 1 }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, default: 50 }
-      responses:
-        '200':
-          description: Список заказов
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrdersPage'
+          description: Отмена невозможна (уже собран/доставлен)
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /admin/orders/{orderId}:
-    get:
-      tags: [admin]
-      summary: Просмотр заказа с контактами клиента
-      operationId: getOrderWithCustomerDetails
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: orderId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Полная информация о заказе и клиенте
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderWithCustomer'
-
     patch:
       tags: [admin]
-      summary: Обновить статус заказа
+      summary: Изменить статус заказа (админ)
+      description: |
+        При смене статуса на cancelled → автоматически освобождаются остатки.
       operationId: updateOrderStatus
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
         - name: orderId
           in: path
@@ -545,18 +391,13 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [processing, ready, completed, cancelled]
-                  example: "processing"
-                comment:
-                  type: string
-                  example: "Передан на сборку"
+                  enum: [new, processing, ready, completed, cancelled]
+                comment: { type: string }
       responses:
         '200':
-          description: Статус обновлен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
+          description: Статус изменён
+        '400':
+          description: Недопустимый переход статуса
 
 components:
   securitySchemes:
@@ -564,248 +405,205 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT токен, полученный при регистрации/входе
 
   schemas:
-    ########## Auth ##########
+    # ────────────────────────────────────────────────
+    # Auth & User
+    # ────────────────────────────────────────────────
     RegisterRequest:
       type: object
-      required: [email, password, firstName, lastName]
+      required: [email, password, firstName, phone]
       properties:
-        email:    { type: string, format: email, example: "user@example.com" }
-        password: { type: string, format: password, minLength: 8, example: "password123" }
-        firstName: { type: string, example: "Иван" }
-        lastName:  { type: string, example: "Иванов" }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string, pattern: '^\\+7\\d{10}$' }
 
     LoginRequest:
       type: object
       required: [email, password]
       properties:
-        email:    { type: string, format: email, example: "user@example.com" }
-        password: { type: string, format: password, example: "password123" }
+        email: { type: string, format: email }
+        password: { type: string }
 
     AuthResponse:
       type: object
       properties:
-        id:        { type: integer, example: 123 }
-        email:     { type: string, example: "user@example.com" }
-        firstName: { type: string, example: "Иван" }
-        lastName:  { type: string, example: "Иванов" }
-        token:     { type: string, example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEyM30" }
+        userId: { type: integer }
+        email: { type: string }
+        firstName: { type: string }
+        token: { type: string }
+        expiresIn: { type: integer }
 
     User:
       type: object
       properties:
-        id:         { type: integer, example: 123 }
-        email:      { type: string, example: "user@example.com" }
-        firstName:  { type: string, example: "Иван" }
-        lastName:   { type: string, example: "Иванов" }
-        phone:      { type: string, example: "+79161234567" }
-        role:       { type: string, enum: [user, admin], example: "user" }
-        createdAt:  { type: string, format: date-time }
+        id: { type: integer }
+        email: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string }
+        role: { type: string, enum: [user, admin] }
 
-    ########## Products ##########
+    # ────────────────────────────────────────────────
+    # Products
+    # ────────────────────────────────────────────────
     Product:
       type: object
       properties:
-        id:          { type: integer, example: 56789 }
-        name:        { type: string, example: "Royal Canin Sterilised 37" }
-        description: { type: string, example: "Корм для стерилизованных кошек" }
-        price:       { type: number, format: double, example: 2890.00 }
-        brand:       { type: string, example: "Royal Canin" }
-        animalType:  { type: string, enum: [dog, cat, bird, fish], example: "cat" }
-        category:    { type: string, enum: [food, toys, accessories, care], example: "food" }
-        weightKg:    { type: number, format: double, example: 4.0 }
-        image:       { type: string, format: uri, example: "https://cdn.zooshop.ru/56789.jpg" }
-        stock:       { type: integer, example: 124 }
+        id: { type: integer }
+        name: { type: string }
+        brand: { type: string }
+        animalType: { type: string }
+        category: { type: string }
+        price: { type: number, format: double }
+        weightKg: { type: number, format: double }
+        stock: 
+          type: integer
+          description: Доступное количество после вычета резервов
+        image: { type: string, format: uri }
+        rating: { type: number, format: float }
 
     ProductDetails:
       allOf:
         - $ref: '#/components/schemas/Product'
         - type: object
           properties:
-            images: 
-              type: array
-              items: { type: string, format: uri }
-              example: ["https://cdn.zooshop.ru/56789-1.jpg", "https://cdn.zooshop.ru/56789-2.jpg"]
-            features:
-              type: array
-              items: { type: string }
-              example: ["sterilized", "urinary"]
+            images: { type: array, items: { type: string, format: uri } }
+            description: { type: string }
+            composition: { type: string }
+            features: { type: array, items: { type: string } }
             storeAvailability:
               type: array
-              items: { $ref: '#/components/schemas/StoreAvailability' }
+              items:
+                $ref: '#/components/schemas/StoreAvailability'
 
     StoreAvailability:
       type: object
       properties:
-        storeId:    { type: string, example: "store_1" }
-        storeName:  { type: string, example: "Магазин на Ленина" }
-        address:    { type: string, example: "ул. Ленина, 10" }
-        quantity:   { type: integer, example: 5 }
+        storeId: { type: string }
+        name: { type: string }
+        address: { type: string }
+        quantity: { type: integer }
 
     ProductsPage:
       type: object
       properties:
-        data: 
+        items: 
           type: array
           items: { $ref: '#/components/schemas/Product' }
-        meta:
+        pagination:
           type: object
           properties:
-            currentPage: { type: integer, example: 1 }
-            perPage:     { type: integer, example: 20 }
-            total:       { type: integer, example: 145 }
+            current: { type: integer }
+            totalPages: { type: integer }
+            totalItems: { type: integer }
 
-    ########## Cart ##########
+    # ────────────────────────────────────────────────
+    # Cart
+    # ────────────────────────────────────────────────
     CartItemRequest:
       type: object
       required: [productId, quantity]
       properties:
-        productId: { type: integer, example: 56789 }
-        quantity:  { type: integer, minimum: 1, maximum: 99, example: 2 }
+        productId: { type: integer }
+        quantity: { type: integer, minimum: 1 }
 
     CartItem:
       type: object
       properties:
-        productId: { type: integer, example: 56789 }
-        name:      { type: string, example: "Royal Canin Sterilised 37" }
-        quantity:  { type: integer, example: 2 }
-        price:     { type: number, format: double, example: 2890.00 }
-        total:     { type: number, format: double, example: 5780.00 }
-        image:     { type: string, example: "https://cdn.zooshop.ru/56789.jpg" }
+        productId: { type: integer }
+        name: { type: string }
+        quantity: { type: integer }
+        price: { type: number, format: double }
+        total: { type: number, format: double }
+        image: { type: string, format: uri }
 
     Cart:
       type: object
       properties:
-        items: 
-          type: array
-          items: { $ref: '#/components/schemas/CartItem' }
-        totalAmount:  { type: number, example: 5780.00 }
-        deliveryCost: { type: number, example: 0.00 }
-        finalAmount:  { type: number, example: 5780.00 }
+        items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
+        totalAmount: { type: number, format: double }
+        deliveryCost: { type: number, format: double }
+        finalAmount: { type: number, format: double }
 
-    ########## Orders ##########
+    # ────────────────────────────────────────────────
+    # Orders
+    # ────────────────────────────────────────────────
     CreateOrderRequest:
       type: object
       required: [deliveryType, recipient]
       properties:
-        deliveryType:
-          type: string
-          enum: [pickup, delivery]
-          example: "pickup"
-        pickupStoreId:
-          type: string
-          example: "store_1"
-          description: Обязательно если deliveryType=pickup
+        deliveryType: { type: string, enum: [pickup, delivery] }
+        pickupStoreId: { type: string }
         deliveryAddress:
           $ref: '#/components/schemas/Address'
-          description: Обязательно если deliveryType=delivery
         recipient:
           $ref: '#/components/schemas/Recipient'
-        paymentMethod:
-          type: string
-          enum: [online, cash]
-          default: "online"
-        comment:
-          type: string
-          example: "Позвоните за 15 минут"
+        paymentMethod: { type: string, enum: [online, cash_on_delivery] }
+        comment: { type: string }
 
     Address:
       type: object
       properties:
-        city:      { type: string, example: "Москва" }
-        street:    { type: string, example: "Ленинский пр." }
-        house:     { type: string, example: "42" }
-        apartment: { type: string, example: "15" }
+        city: { type: string }
+        street: { type: string }
+        house: { type: string }
+        apartment: { type: string }
+        entrance: { type: string }
+        floor: { type: integer }
 
     Recipient:
       type: object
       required: [firstName, phone]
       properties:
-        firstName: { type: string, example: "Анна" }
-        lastName:  { type: string, example: "Смирнова" }
-        phone:     { type: string, example: "+79161234567" }
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string }
 
     Order:
       type: object
       properties:
-        id:           { type: string, example: "ORD-20250210-123456" }
-        status:       
+        id: { type: string }
+        status: 
           type: string
-          enum: [new, processing, ready, completed, cancelled]
-          example: "new"
-        totalAmount:  { type: number, example: 5780.00 }
-        deliveryType: { type: string, enum: [pickup, delivery], example: "pickup" }
-        pickupStore:  { type: string, example: "Магазин на Ленина, 10" }
-        pickupCode:   { type: string, example: "A1B2C3" }
-        items:
-          type: array
-          items: { $ref: '#/components/schemas/CartItem' }
-        createdAt:    { type: string, format: date-time }
-        updatedAt:    { type: string, format: date-time }
-
-    OrderWithCustomer:
-      allOf:
-        - $ref: '#/components/schemas/Order'
-        - type: object
-          properties:
-            customer:
-              type: object
-              properties:
-                email:     { type: string, example: "user@example.com" }
-                firstName: { type: string, example: "Анна" }
-                lastName:  { type: string, example: "Смирнова" }
-                phone:     { type: string, example: "+79161234567" }
+          enum: [new, processing, ready_for_pickup, shipped, delivered, cancelled]
+        totalAmount: { type: number, format: double }
+        deliveryType: { type: string, enum: [pickup, delivery] }
+        items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
 
     OrdersPage:
       type: object
       properties:
-        data: 
-          type: array
-          items: { $ref: '#/components/schemas/Order' }
-        meta:
+        items: { type: array, items: { $ref: '#/components/schemas/Order' } }
+        pagination:
           type: object
           properties:
-            currentPage: { type: integer, example: 1 }
-            perPage:     { type: integer, example: 20 }
-            total:       { type: integer, example: 8 }
+            current: { type: integer }
+            totalPages: { type: integer }
+            totalItems: { type: integer }
 
-    ########## Admin Products ##########
-    ProductCreateRequest:
-      type: object
-      required: [name, price, stock, brand, animalType, category]
-      properties:
-        name:        { type: string, example: "Acana Grasslands Dog" }
-        description: { type: string, example: "Беззерновой корм для собак" }
-        price:       { type: number, example: 4500.00 }
-        stock:       { type: integer, example: 50 }
-        brand:       { type: string, example: "Acana" }
-        animalType:  { type: string, enum: [dog, cat, bird, fish], example: "dog" }
-        category:    { type: string, enum: [food, toys, accessories, care], example: "food" }
-        weightKg:    { type: number, example: 11.4 }
-        features:    
-          type: array
-          items: { type: string }
-          example: ["grain-free", "high-protein"]
-        image:       { type: string, format: uri, example: "https://cdn.zooshop.ru/acana-dog.jpg" }
-
-    ProductUpdateRequest:
-      type: object
-      properties:
-        name:        { type: string, example: "Acana Grasslands Dog (обновлен)" }
-        description: { type: string, example: "Новое описание" }
-        price:       { type: number, example: 4700.00 }
-        stock:       { type: integer, example: 45 }
-        isActive:    { type: boolean, example: true }
-        image:       { type: string, format: uri }
-
-    ########## Common ##########
+    # ────────────────────────────────────────────────
+    # Common
+    # ────────────────────────────────────────────────
     Error:
       type: object
       properties:
-        message: { type: string, example: "Email уже зарегистрирован" }
-        code:    { type: string, example: "EMAIL_EXISTS" }
+        message: { type: string }
+        code: { type: string }
+        details: { type: object, additionalProperties: true }
 
-security:
-  - bearerAuth: []
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Требуется авторизация
+    NotFound:
+      description: Ресурс не найден

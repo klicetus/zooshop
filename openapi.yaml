@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: Зоомагазин API — Корма и товары для домашних животных
-  version: 1.2.0
+  version: 1.3.0
   description: |
     
   contact:
@@ -119,40 +119,61 @@ paths:
         - name: search
           in: query
           schema: { type: string }
-          description: Поиск по названию / бренду / артикулу
-        - name: categories
+          description: Поиск по названию, бренду, описанию
+
+        - name: categoryIds
           in: query
+          description: ID категорий из таблицы categories (множественный выбор)
           schema:
             type: array
-            items:
-              type: string
-              enum: [food, toys, accessories, care, supplements, grooming, litter]
+            items: { type: integer }
           style: form
           explode: false
-          description: Несколько категорий через запятую
-        - name: animalTypes
+          example: [1,5,12]
+
+        - name: animalTypeIds
           in: query
+          description: ID видов животных из таблицы animal_types
           schema:
             type: array
-            items:
-              type: string
-              enum: [dog, cat, bird, fish, small_pet, reptile, other]
+            items: { type: integer }
           style: form
           explode: false
+          example: [2,3]
+
+        - name: brandIds
+          in: query
+          description: ID брендов из таблицы brands
+          schema:
+            type: array
+            items: { type: integer }
+          style: form
+          explode: false
+          example: [4,7,15]
+
         - name: weights
           in: query
+          description: Точные значения фасовки в кг
           schema:
             type: array
             items: { type: number, format: double }
           style: form
           explode: false
-          description: Точные значения фасовки (кг)
+
         - name: weightMin
           in: query
           schema: { type: number, format: double }
         - name: weightMax
           in: query
           schema: { type: number, format: double }
+
+        - name: minPrice
+          in: query
+          schema: { type: number, format: double }
+        - name: maxPrice
+          in: query
+          schema: { type: number, format: double }
+
         - name: sort
           in: query
           schema:
@@ -166,7 +187,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 100, default: 24 }
       responses:
         '200':
-          description: Страница товаров
+          description: "Получение товаров с фильтрацией по бренду/категории/типу"
           content:
             application/json:
               schema:
@@ -191,6 +212,54 @@ paths:
                 $ref: '#/components/schemas/ProductDetails'
         '404':
           description: Товар не найден
+
+  /categories:
+    get:
+      tags: [products]
+      summary: Получить все категории товаров
+      operationId: getCategories
+      description: Возвращает список всех активных категорий из таблицы categories
+      responses:
+        '200':
+          description: Список категорий
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+
+  /animal-types:
+    get:
+      tags: [products]
+      summary: Получить все виды животных
+      operationId: getAnimalTypes
+      description: Список видов животных из таблицы animal_types
+      responses:
+        '200':
+          description: Список видов животных
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnimalType'
+
+  /brands:
+    get:
+      tags: [products]
+      summary: Получить все бренды
+      operationId: getBrands
+      description: Список брендов из таблицы brands
+      responses:
+        '200':
+          description: Список брендов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Brand'
 
   /cart:
     get:
@@ -454,16 +523,17 @@ paths:
   /admin/orders:
     get:
       tags: [admin]
-      summary: Получить список всех заказов (с фильтрами)
+      summary: Получить все заказы с фильтрацией
       operationId: getAdminOrders
       security:
         - bearerAuth: []
       parameters:
-        - name: status
+        - name: statusId
           in: query
-          schema:
-            type: string
-            enum: [new, processing, ready, completed, cancelled]
+          description: ID статуса из таблицы status
+          schema: { type: integer }
+          example: 3
+
         - name: startDate
           in: query
           schema: { type: string, format: date }
@@ -481,7 +551,7 @@ paths:
           schema: { type: integer, default: 50 }
       responses:
         '200':
-          description: Страница заказов
+          description: "Страница заказов"
           content:
             application/json:
               schema:
@@ -540,6 +610,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/Order'
 
+  /order-statuses:
+    get:
+      tags: [orders, admin]
+      summary: Получить все возможные статусы заказов
+      operationId: getOrderStatuses
+      description: Список статусов из таблицы status
+      responses:
+        '200':
+          description: Список статусов заказов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderStatus'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -591,12 +677,12 @@ components:
         name: { type: string }
         description: { type: string }
         price: { type: number, format: double }
-        brand: { type: string }
-        animalType: { type: string }
-        category: { type: string }
+        categoryId: { type: integer, description: "ID из таблицы categories" }
+        animalTypeId: { type: integer, description: "ID из таблицы animal_types" }
+        brandId: { type: integer, description: "ID из таблицы brands" }
         weightKg: { type: number, format: double }
         image: { type: string, format: uri }
-        stock: { type: integer, description: "Доступный остаток после резервов" }
+        stock: { type: integer }
 
     ProductDetails:
       allOf:
@@ -687,7 +773,7 @@ components:
       type: object
       properties:
         id: { type: string }
-        status: { type: string, enum: [new, processing, ready, completed, cancelled] }
+        statusId: { type: integer, description: "ID статуса из таблицы status" }
         totalAmount: { type: number, format: double }
         deliveryType: { type: string, enum: [pickup, delivery] }
         items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
@@ -741,6 +827,100 @@ components:
         price: { type: number, format: double }
         stock: { type: integer }
         image: { type: string, format: uri }
+    
+    Category:
+      type: object
+      properties:
+        id: 
+          type: integer
+          example: 5
+        name: 
+          type: string
+          example: "Сухие корма"
+        slug: 
+          type: string
+          example: "suhoj-korm"
+        description: 
+          type: string
+          nullable: true
+        isActive: 
+          type: boolean
+          default: true
+        sortOrder: 
+          type: integer
+          example: 10
+
+    AnimalType:
+      type: object
+      properties:
+        id: 
+          type: integer
+          example: 2
+        name: 
+          type: string
+          example: "Кошки"
+        slug: 
+          type: string
+          example: "koshki"
+        icon: 
+          type: string
+          format: uri
+          nullable: true
+          example: "https://cdn.zooshop.ru/icons/cat.svg"
+        isActive: 
+          type: boolean
+          default: true
+
+    Brand:
+      type: object
+      properties:
+        id: 
+          type: integer
+          example: 7
+        name: 
+          type: string
+          example: "Royal Canin"
+        slug: 
+          type: string
+          example: "royal-canin"
+        logo: 
+          type: string
+          format: uri
+          nullable: true
+        country: 
+          type: string
+          nullable: true
+          example: "Франция"
+        isActive: 
+          type: boolean
+          default: true
+
+    OrderStatus:
+      type: object
+      properties:
+        id: 
+          type: integer
+          example: 3
+        name: 
+          type: string
+          example: "В сборке"
+        code: 
+          type: string
+          example: "processing"
+        color: 
+          type: string
+          example: "#FFA500"
+        description: 
+          type: string
+          nullable: true
+          example: "Заказ собран и готов к выдаче/отправке"
+        isFinal: 
+          type: boolean
+          description: Финальный статус (completed, cancelled и т.п.)
+          default: false
+        sortOrder: 
+          type: integer
+          example: 30
 
     Error:
       type: object

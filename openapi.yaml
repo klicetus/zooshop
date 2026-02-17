@@ -1,25 +1,17 @@
 openapi: 3.0.0
 info:
   title: Зоомагазин API — Корма и товары для домашних животных
-  version: 1.1.0
+  version: 1.2.0
   description: |
-    REST API для онлайн-магазина зоотоваров с поддержкой доставки и самовывоза.
-    
-   
     
   contact:
     name: Поддержка зоомагазина
     email: support@zooshop.ru
     url: https://zooshop.ru/support
-  license:
-    name: Proprietary
-    url: https://zooshop.ru/license
 
 servers:
   - url: https://api.zooshop.ru/v1
     description: Production сервер
-  - url: https://staging-api.zooshop.ru/v1
-    description: Staging / Тестирование
 
 tags:
   - name: auth
@@ -31,7 +23,7 @@ tags:
   - name: cart
     description: Корзина
   - name: orders
-    description: Заказы
+    description: Заказы и управление ими
   - name: admin
     description: Административные функции
 
@@ -39,7 +31,7 @@ paths:
   /auth/register:
     post:
       tags: [auth]
-      summary: Регистрация пользователя
+      summary: Регистрация нового пользователя
       operationId: registerUser
       requestBody:
         required: true
@@ -49,15 +41,15 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
         '201':
-          description: Пользователь создан
+          description: Пользователь успешно зарегистрирован
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Некорректные данные
         '409':
-          description: Email уже зарегистрирован
+          description: Email уже занят
 
   /auth/login:
     post:
@@ -80,6 +72,27 @@ paths:
         '401':
           description: Неверные учетные данные
 
+  /auth/admin/login:
+    post:
+      tags: [auth, admin]
+      summary: Вход администратора
+      operationId: loginAdmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход в админ-панель
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '403':
+          description: Недостаточно прав
+
   /users/me:
     get:
       tags: [users]
@@ -95,18 +108,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Не авторизован
 
   /products:
     get:
       tags: [products]
-      summary: Список товаров с фильтрами и пагинацией
+      summary: Получить список товаров с фильтрами
       operationId: getProducts
       parameters:
         - name: search
           in: query
           schema: { type: string }
-          description: Поиск по названию, бренду, описанию
+          description: Поиск по названию / бренду / артикулу
         - name: categories
           in: query
           schema:
@@ -116,7 +129,7 @@ paths:
               enum: [food, toys, accessories, care, supplements, grooming, litter]
           style: form
           explode: false
-          description: Множественный выбор категорий (?categories=food,care)
+          description: Несколько категорий через запятую
         - name: animalTypes
           in: query
           schema:
@@ -126,7 +139,6 @@ paths:
               enum: [dog, cat, bird, fish, small_pet, reptile, other]
           style: form
           explode: false
-          description: Множественный выбор видов животных
         - name: weights
           in: query
           schema:
@@ -134,31 +146,18 @@ paths:
             items: { type: number, format: double }
           style: form
           explode: false
-          description: Точные значения фасовки в кг (?weights=1.5,4,10)
+          description: Точные значения фасовки (кг)
         - name: weightMin
           in: query
           schema: { type: number, format: double }
-          description: Минимальный вес фасовки
         - name: weightMax
           in: query
           schema: { type: number, format: double }
-          description: Максимальный вес фасовки
-        - name: minPrice
-          in: query
-          schema: { type: number, format: double }
-        - name: maxPrice
-          in: query
-          schema: { type: number, format: double }
-        - name: inStock
-          in: query
-          schema: { type: boolean, default: true }
-          description: Только товары в наличии
         - name: sort
           in: query
           schema:
             type: string
             enum: [price_asc, price_desc, name_asc, name_desc, popularity_desc, novelty_desc]
-          
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
@@ -185,18 +184,18 @@ paths:
           schema: { type: integer }
       responses:
         '200':
-          description: Карточка товара
+          description: Полная карточка товара
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductDetails'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Товар не найден
 
   /cart:
     get:
       tags: [cart]
-      summary: Получить корзину
+      summary: Получить корзину текущего пользователя
       operationId: getCart
       security:
         - bearerAuth: []
@@ -207,6 +206,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Cart'
+    delete:
+      tags: [cart]
+      summary: Полностью очистить корзину текущего пользователя
+      operationId: clearCart
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Корзина успешно очищена (все товары удалены)
+        '401':
+          description: Не авторизован
 
   /cart/items:
     post:
@@ -230,7 +240,7 @@ paths:
   /cart/items/{productId}:
     patch:
       tags: [cart]
-      summary: Изменить количество
+      summary: Изменить количество товара в корзине
       operationId: updateCartItemQuantity
       security:
         - bearerAuth: []
@@ -247,16 +257,18 @@ paths:
               type: object
               required: [quantity]
               properties:
-                quantity: { type: integer, minimum: 1 }
+                quantity:
+                  type: integer
+                  minimum: 1
       responses:
         '200':
-          description: Обновлено
+          description: Количество обновлено
         '409':
-          description: Недостаточно на складе
+          description: Недостаточно товара
 
     delete:
       tags: [cart]
-      summary: Удалить позицию
+      summary: Удалить товар из корзины
       operationId: removeFromCart
       security:
         - bearerAuth: []
@@ -267,15 +279,16 @@ paths:
           schema: { type: integer }
       responses:
         '204':
-          description: Удалено
+          description: Товар удалён из корзины
 
   /orders:
     post:
       tags: [orders]
       summary: Создать заказ
       description: |
-        Создаёт заказ → резервирует товары (уменьшает stock).
-        Если недостаточно остатка хотя бы по одному товару → откат, 409.
+        Создаёт заказ на основе корзины.
+        Автоматически резервирует товары (уменьшает stock).
+        Если недостаточно хотя бы одного товара — откат, 409.
         После успеха корзина очищается.
       operationId: createOrder
       security:
@@ -300,7 +313,7 @@ paths:
 
     get:
       tags: [orders]
-      summary: Список заказов пользователя
+      summary: Список заказов текущего пользователя
       operationId: getUserOrders
       security:
         - bearerAuth: []
@@ -322,7 +335,7 @@ paths:
   /orders/{orderId}:
     get:
       tags: [orders]
-      summary: Детали заказа
+      summary: Детали конкретного заказа
       operationId: getOrderById
       security:
         - bearerAuth: []
@@ -334,16 +347,20 @@ paths:
       responses:
         '200':
           description: Детали заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Заказ не найден
 
   /orders/{orderId}/cancel:
     post:
       tags: [orders]
       summary: Отменить заказ
       description: |
-        Отменяет заказ → освобождает остатки (увеличивает stock).
-        Доступно только для статусов: new, processing.
+        Отменяет заказ и освобождает зарезервированные остатки.
+        Возможно только для статусов new и processing.
       operationId: cancelOrder
       security:
         - bearerAuth: []
@@ -358,21 +375,142 @@ paths:
             schema:
               type: object
               properties:
-                reason: { type: string }
+                reason:
+                  type: string
       responses:
         '200':
           description: Заказ отменён, остатки освобождены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
         '400':
-          description: Отмена невозможна (уже собран/доставлен)
+          description: Отмена невозможна (уже собран / доставлен)
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Заказ не найден
+
+  # Админ-функции
+  /admin/products:
+    post:
+      tags: [admin]
+      summary: Создать новый товар
+      operationId: createProduct
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreateRequest'
+      responses:
+        '201':
+          description: Товар создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+
+  /admin/products/{productId}:
+    put:
+      tags: [admin]
+      summary: Обновить товар
+      operationId: updateProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdateRequest'
+      responses:
+        '200':
+          description: Товар обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+    delete:
+      tags: [admin]
+      summary: Удалить товар
+      operationId: deleteProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Товар удалён
+
+  /admin/orders:
+    get:
+      tags: [admin]
+      summary: Получить список всех заказов (с фильтрами)
+      operationId: getAdminOrders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, processing, ready, completed, cancelled]
+        - name: startDate
+          in: query
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          schema: { type: string, format: date }
+        - name: customerId
+          in: query
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Страница заказов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersPage'
 
   /admin/orders/{orderId}:
+    get:
+      tags: [admin]
+      summary: Получить полный заказ с данными клиента
+      operationId: getOrderWithCustomerDetails
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Заказ + данные клиента
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderWithCustomer'
+
     patch:
       tags: [admin]
       summary: Изменить статус заказа (админ)
-      description: |
-        При смене статуса на cancelled → автоматически освобождаются остатки.
+      description: При смене на cancelled → автоматически освобождаются остатки
       operationId: updateOrderStatus
       security:
         - bearerAuth: []
@@ -391,13 +529,16 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [new, processing, ready, completed, cancelled]
-                comment: { type: string }
+                  enum: [processing, ready, completed, cancelled]
+                comment:
+                  type: string
       responses:
         '200':
-          description: Статус изменён
-        '400':
-          description: Недопустимый переход статуса
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
 
 components:
   securitySchemes:
@@ -407,9 +548,6 @@ components:
       bearerFormat: JWT
 
   schemas:
-    # ────────────────────────────────────────────────
-    # Auth & User
-    # ────────────────────────────────────────────────
     RegisterRequest:
       type: object
       required: [email, password, firstName, phone]
@@ -418,7 +556,7 @@ components:
         password: { type: string, minLength: 8 }
         firstName: { type: string }
         lastName: { type: string }
-        phone: { type: string, pattern: '^\\+7\\d{10}$' }
+        phone: { type: string }
 
     LoginRequest:
       type: object
@@ -430,11 +568,11 @@ components:
     AuthResponse:
       type: object
       properties:
-        userId: { type: integer }
+        id: { type: integer }
         email: { type: string }
         firstName: { type: string }
+        lastName: { type: string }
         token: { type: string }
-        expiresIn: { type: integer }
 
     User:
       type: object
@@ -446,24 +584,19 @@ components:
         phone: { type: string }
         role: { type: string, enum: [user, admin] }
 
-    # ────────────────────────────────────────────────
-    # Products
-    # ────────────────────────────────────────────────
     Product:
       type: object
       properties:
         id: { type: integer }
         name: { type: string }
+        description: { type: string }
+        price: { type: number, format: double }
         brand: { type: string }
         animalType: { type: string }
         category: { type: string }
-        price: { type: number, format: double }
         weightKg: { type: number, format: double }
-        stock: 
-          type: integer
-          description: Доступное количество после вычета резервов
         image: { type: string, format: uri }
-        rating: { type: number, format: float }
+        stock: { type: integer, description: "Доступный остаток после резервов" }
 
     ProductDetails:
       allOf:
@@ -471,8 +604,6 @@ components:
         - type: object
           properties:
             images: { type: array, items: { type: string, format: uri } }
-            description: { type: string }
-            composition: { type: string }
             features: { type: array, items: { type: string } }
             storeAvailability:
               type: array
@@ -483,26 +614,21 @@ components:
       type: object
       properties:
         storeId: { type: string }
-        name: { type: string }
+        storeName: { type: string }
         address: { type: string }
         quantity: { type: integer }
 
     ProductsPage:
       type: object
       properties:
-        items: 
-          type: array
-          items: { $ref: '#/components/schemas/Product' }
-        pagination:
+        data: { type: array, items: { $ref: '#/components/schemas/Product' } }
+        meta:
           type: object
           properties:
-            current: { type: integer }
-            totalPages: { type: integer }
-            totalItems: { type: integer }
+            currentPage: { type: integer }
+            perPage: { type: integer }
+            total: { type: integer }
 
-    # ────────────────────────────────────────────────
-    # Cart
-    # ────────────────────────────────────────────────
     CartItemRequest:
       type: object
       required: [productId, quantity]
@@ -528,9 +654,6 @@ components:
         deliveryCost: { type: number, format: double }
         finalAmount: { type: number, format: double }
 
-    # ────────────────────────────────────────────────
-    # Orders
-    # ────────────────────────────────────────────────
     CreateOrderRequest:
       type: object
       required: [deliveryType, recipient]
@@ -551,8 +674,6 @@ components:
         street: { type: string }
         house: { type: string }
         apartment: { type: string }
-        entrance: { type: string }
-        floor: { type: integer }
 
     Recipient:
       type: object
@@ -566,44 +687,63 @@ components:
       type: object
       properties:
         id: { type: string }
-        status: 
-          type: string
-          enum: [new, processing, ready_for_pickup, shipped, delivered, cancelled]
+        status: { type: string, enum: [new, processing, ready, completed, cancelled] }
         totalAmount: { type: number, format: double }
         deliveryType: { type: string, enum: [pickup, delivery] }
         items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    OrderWithCustomer:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          properties:
+            customer:
+              type: object
+              properties:
+                id: { type: integer }
+                email: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+                phone: { type: string }
+
     OrdersPage:
       type: object
       properties:
-        items: { type: array, items: { $ref: '#/components/schemas/Order' } }
-        pagination:
+        data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+        meta:
           type: object
           properties:
-            current: { type: integer }
-            totalPages: { type: integer }
-            totalItems: { type: integer }
+            currentPage: { type: integer }
+            perPage: { type: integer }
+            total: { type: integer }
 
-    # ────────────────────────────────────────────────
-    # Common
-    # ────────────────────────────────────────────────
+    ProductCreateRequest:
+      type: object
+      required: [name, price, stock, brand, animalType, category]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, format: double }
+        stock: { type: integer }
+        brand: { type: string }
+        animalType: { type: string }
+        category: { type: string }
+        weightKg: { type: number, format: double }
+        image: { type: string, format: uri }
+
+    ProductUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, format: double }
+        stock: { type: integer }
+        image: { type: string, format: uri }
+
     Error:
       type: object
       properties:
         message: { type: string }
         code: { type: string }
-        details: { type: object, additionalProperties: true }
-
-  responses:
-    BadRequest:
-      description: Некорректный запрос
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Unauthorized:
-      description: Требуется авторизация
-    NotFound:
-      description: Ресурс не найден

@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: Зоомагазин API — Корма и товары для домашних животных
-  version: 1.3.0
+  version: 1.4.0
   description: |
     
   contact:
@@ -32,7 +32,7 @@ paths:
     post:
       tags: [auth]
       summary: Регистрация нового пользователя
-      operationId: registerUser
+      operationId: register_user
       requestBody:
         required: true
         content:
@@ -106,7 +106,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/UserWithAddress'
         '401':
           description: Не авторизован
 
@@ -121,7 +121,7 @@ paths:
           schema: { type: string }
           description: Поиск по названию, бренду, описанию
 
-        - name: categoryIds
+        - name: category_ids
           in: query
           description: ID категорий из таблицы categories (множественный выбор)
           schema:
@@ -131,7 +131,7 @@ paths:
           explode: false
           example: [1,5,12]
 
-        - name: animalTypeIds
+        - name: animal_type_ids
           in: query
           description: ID видов животных из таблицы animal_types
           schema:
@@ -141,7 +141,7 @@ paths:
           explode: false
           example: [2,3]
 
-        - name: brandIds
+        - name: brand_ids
           in: query
           description: ID брендов из таблицы brands
           schema:
@@ -209,7 +209,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductDetails'
+                $ref: '#/components/schemas/ProductDetailsWithVariants'
         '404':
           description: Товар не найден
 
@@ -462,7 +462,7 @@ paths:
   /admin/products:
     post:
       tags: [admin]
-      summary: Создать новый товар
+      summary: Создать новый товар (с возможностью сразу указать варианты фасовки)
       operationId: createProduct
       security:
         - bearerAuth: []
@@ -474,16 +474,110 @@ paths:
               $ref: '#/components/schemas/ProductCreateRequest'
       responses:
         '201':
-          description: Товар создан
+          description: Товар создан (и варианты, если были переданы)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Product'
+                $ref: '#/components/schemas/ProductWithVariants'
+        '400':
+          description: Некорректные данные
+        '409':
+          description: Конфликт (например, sku уже существует)
+
+  /admin/products/{productId}/variants:
+    post:
+      tags: [admin]
+      summary: Добавить новый вариант фасовки к существующему товару
+      operationId: addProductVariant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductVariantCreateRequest'
+      responses:
+        '201':
+          description: Вариант добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariant'
+        '404':
+          description: Товар не найден
+        '409':
+          description: Конфликт (sku или barcode уже занят)
+
+  /admin/products/{productId}/variants/{variantId}:
+    put:
+      tags: [admin]
+      summary: Обновить конкретный вариант фасовки товара
+      operationId: updateProductVariant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: variantId
+          in: path
+          required: true
+          schema: { type: integer }
+          description: ID записи из таблицы product_variants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductVariantUpdateRequest'
+      responses:
+        '200':
+          description: Вариант обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariant'
+        '404':
+          description: Товар или вариант не найден
+        '409':
+          description: Конфликт (например, sku уже занят другим вариантом)
+        '400':
+          description: Некорректные данные
+
+    delete:
+      tags: [admin]
+      summary: Удалить вариант фасовки
+      operationId: deleteProductVariant
+      security:
+      - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: variantId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Вариант удалён
+        '404':
+          description: Не найден
+        '400':
+          description: Нельзя удалить последний вариант   
 
   /admin/products/{productId}:
     put:
       tags: [admin]
-      summary: Обновить товар
+      summary: Обновить основные данные товара 
       operationId: updateProduct
       security:
         - bearerAuth: []
@@ -500,11 +594,16 @@ paths:
               $ref: '#/components/schemas/ProductUpdateRequest'
       responses:
         '200':
-          description: Товар обновлён
+          description: Основные данные товара обновлены
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Product'
+        '404':
+          description: Товар не найден
+        '400':
+          description: Некорректные данные
+
     delete:
       tags: [admin]
       summary: Удалить товар
@@ -612,7 +711,7 @@ paths:
 
   /order-statuses:
     get:
-      tags: [orders, admin]
+      tags: [admin]
       summary: Получить все возможные статусы заказов
       operationId: getOrderStatuses
       description: Список статусов из таблицы status
@@ -636,12 +735,12 @@ components:
   schemas:
     RegisterRequest:
       type: object
-      required: [email, password, firstName, phone]
+      required: [email, password, first_name, phone]
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8 }
-        firstName: { type: string }
-        lastName: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
         phone: { type: string }
 
     LoginRequest:
@@ -656,8 +755,8 @@ components:
       properties:
         id: { type: integer }
         email: { type: string }
-        firstName: { type: string }
-        lastName: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
         token: { type: string }
 
     User:
@@ -665,10 +764,22 @@ components:
       properties:
         id: { type: integer }
         email: { type: string }
-        firstName: { type: string }
-        lastName: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
         phone: { type: string }
         role: { type: string, enum: [user, admin] }
+
+    UserWithAddress:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        phone: { type: string }
+        role: { type: string, enum: [user, admin] }
+        user_address:
+          $ref: '#/components/schemas/Address'
 
     Product:
       type: object
@@ -676,13 +787,10 @@ components:
         id: { type: integer }
         name: { type: string }
         description: { type: string }
-        price: { type: number, format: double }
-        categoryId: { type: integer, description: "ID из таблицы categories" }
-        animalTypeId: { type: integer, description: "ID из таблицы animal_types" }
-        brandId: { type: integer, description: "ID из таблицы brands" }
-        weightKg: { type: number, format: double }
+        category_id: { type: integer, description: "ID из таблицы categories" }
+        animal_type_id: { type: integer, description: "ID из таблицы animal_types" }
+        brand_id: { type: integer, description: "ID из таблицы brands" }
         image: { type: string, format: uri }
-        stock: { type: integer }
 
     ProductDetails:
       allOf:
@@ -695,6 +803,56 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/StoreAvailability'
+    
+    ProductVariant:
+      type: object
+      properties:
+        id:             { type: integer, description: "ID варианта (первичный ключ product_variants)" }
+        weight:         { type: number, format: decimal, example: 1.500 }
+        weight_unit:     { type: string, example: "кг", enum: ["г", "кг", "шт", "пачка", "л", "мл"] }
+        volume:         { type: number, format: decimal, nullable: true, example: 0.400 }
+        volume_unit:     { type: string, nullable: true, example: "л" }
+        package_type:    { type: string, nullable: true, example: "пауч" }
+        sku:            { type: string, example: "RC-ST37-15KG" }
+        barcode:        { type: string, nullable: true }
+        price:          { type: number, format: decimal, example: 2890.00 }
+        stock:  { type: integer, example: 47, description: "текущее количество на складе" }
+        isAvailable:    { type: boolean, example: true }
+        photo:       { type: string, format: uri, nullable: true }
+        sort_order:      { type: integer, example: 10 }
+        createdAt:      { type: string, format: date-time }
+        updatedAt:      { type: string, format: date-time, nullable: true }
+
+    ProductWithVariants:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            variants:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProductVariant'
+
+    # Полная карточка товара + варианты
+    ProductDetailsWithVariants:
+      allOf:
+        - $ref: '#/components/schemas/ProductDetails'
+        - type: object
+          properties:
+            variants:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProductVariant'
+              description: Все фасовки/варианты данного товара, отсортированные по sort_order
+            defaultVariantId:
+              type: integer
+              nullable: true
+              description: ID варианта, который показывается по умолчанию (часто самый дешёвый или самый популярный)
+            images:
+              type: array
+              items: { type: string, format: uri }
+              description: Общие фото товара (если есть фото, отличающиеся от вариантов)
+
 
     StoreAvailability:
       type: object
@@ -763,10 +921,10 @@ components:
 
     Recipient:
       type: object
-      required: [firstName, phone]
+      required: [first_name, phone]
       properties:
-        firstName: { type: string }
-        lastName: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
         phone: { type: string }
 
     Order:
@@ -790,8 +948,8 @@ components:
               properties:
                 id: { type: integer }
                 email: { type: string }
-                firstName: { type: string }
-                lastName: { type: string }
+                first_name: { type: string }
+                last_name: { type: string }
                 phone: { type: string }
 
     OrdersPage:
@@ -807,27 +965,63 @@ components:
 
     ProductCreateRequest:
       type: object
-      required: [name, price, stock, brand, animalType, category]
+      required: [name, brand_id, category_id, animal_type_id]
       properties:
-        name: { type: string }
-        description: { type: string }
-        price: { type: number, format: double }
-        stock: { type: integer }
-        brand: { type: string }
-        animalType: { type: string }
-        category: { type: string }
-        weightKg: { type: number, format: double }
-        image: { type: string, format: uri }
+        name:          { type: string, example: "Royal Canin Sterilised 37" }
+        description:   { type: string }
+        brand_id:       { type: integer }
+        category_id:    { type: integer }
+        animal_type_id:  { type: integer }
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductVariantCreateRequest'
+          description: Опционально — сразу создать варианты фасовки
+          nullable: true
 
     ProductUpdateRequest:
       type: object
       properties:
-        name: { type: string }
-        description: { type: string }
-        price: { type: number, format: double }
-        stock: { type: integer }
-        image: { type: string, format: uri }
+        name:          { type: string, nullable: true }
+        description:   { type: string, nullable: true }
+        brand_id:       { type: integer, nullable: true }
+        category_id:    { type: integer, nullable: true }
+        animal_type_id:  { type: integer, nullable: true }
+        isActive:      { type: boolean, nullable: true }
     
+    ProductVariantCreateRequest:
+      type: object
+      required: [weight, weight_unit, price, stock, sku]
+      properties:
+        weight:          { type: number, format: decimal, example: 1.500 }
+        weight_unit:      { type: string, example: "кг" }
+        volume:          { type: number, format: decimal, nullable: true }
+        volume_unit:      { type: string, nullable: true }
+        package_type:     { type: string, nullable: true, example: "мешок" }
+        sku:             { type: string, example: "RC-ST37-15KG" }
+        barcode:         { type: string, nullable: true }
+        price:           { type: number, format: decimal, example: 5890.00 }
+        stock:           { type: integer, example: 50 }
+        isAvailable:     { type: boolean, default: true }
+        photo:        { type: string, format: uri, nullable: true }
+        sort_order:       { type: integer, default: 0 }
+
+    ProductVariantUpdateRequest:
+      type: object
+      properties:
+        weight:          { type: number, format: decimal, nullable: true }
+        weight_unit:      { type: string, nullable: true }
+        volume:          { type: number, format: decimal, nullable: true }
+        volume_unit:      { type: string, nullable: true }
+        package_type:     { type: string, nullable: true }
+        sku:             { type: string, nullable: true }
+        barcode:         { type: string, nullable: true }
+        price:           { type: number, format: decimal, nullable: true }
+        stock:   { type: integer, nullable: true }
+        isAvailable:     { type: boolean, nullable: true }
+        photo:        { type: string, format: uri, nullable: true }
+        sort_order:       { type: integer, nullable: true }
+
     Category:
       type: object
       properties:
@@ -846,7 +1040,7 @@ components:
         isActive: 
           type: boolean
           default: true
-        sortOrder: 
+        sort_order: 
           type: integer
           example: 10
 
@@ -918,7 +1112,7 @@ components:
           type: boolean
           description: Финальный статус (completed, cancelled и т.п.)
           default: false
-        sortOrder: 
+        sort_order: 
           type: integer
           example: 30
 
